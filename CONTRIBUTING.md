@@ -227,8 +227,10 @@ Octane is 0.x, so every changeset stays on the `patch` track. `major` and
 - The pull request body should say what changed, why, and what you ran to
   validate it. Call out anything you deliberately left unverified.
 - Every pull request carries exactly one type label: `feat`, `fix`, `docs`,
-  `test`, `perf`, `refactor`, `chore`, or `ci`, matching the title. `bug` and
-  `enhancement` belong to issues.
+  `test`, `perf`, `refactor`, `chore`, or `ci`. You do not apply it;
+  `.github/workflows/label-pr-type.yml` reads it off the title, so a
+  conventional-commit title is all it takes. `bug` and `enhancement` belong to
+  issues.
 
 CI intentionally runs nothing while a pull request is a draft and starts on the
 `ready_for_review` event. From there it runs the sharded test suite on Node 22 and
@@ -245,6 +247,11 @@ cannot show it and the label is the only signal that separates the two.
 `.github/workflows/draft-agent-prs.yml` converts an `agent-authored` pull request
 back to draft if it was opened ready, and a maintainer marks it ready for review
 once it has been looked at.
+
+Contributing from a fork means your token cannot label this repository, so tick
+the `agent-authored` box in the pull request template and a maintainer applies
+it. This is the one label no automation can infer, which is why it is asked of
+you directly.
 
 The repository ships its own agent context: `AGENTS.md` (and its per-tool
 siblings) plus task skills for branching, issues, bug hunting, core changes,

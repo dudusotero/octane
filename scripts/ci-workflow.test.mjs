@@ -11,6 +11,7 @@ const draftWorkflow = readFileSync(
 	path.join(REPO, '.github/workflows/draft-agent-prs.yml'),
 	'utf8',
 );
+const labelWorkflow = readFileSync(path.join(REPO, '.github/workflows/label-pr-type.yml'), 'utf8');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
 function jobSource(job) {
@@ -248,5 +249,117 @@ describe('Agent pull request draft policy', () => {
 			draftWorkflow,
 			/github-token: \$\{\{ secrets\.DRAFT_PR_TOKEN \|\| secrets\.GITHUB_TOKEN \}\}/,
 		);
+	});
+});
+
+describe('Pull request type label', () => {
+	function runLabeller({ title, labels = [], state = 'open' }) {
+		const added = [];
+		const removed = [];
+		const notices = [];
+		const failures = [];
+		const github = {
+			rest: {
+				pulls: {
+					get: async () => ({
+						data: { number: 500, state, title, labels: labels.map((name) => ({ name })) },
+					}),
+				},
+				issues: {
+					addLabels: async ({ labels: names }) => added.push(...names),
+					removeLabel: async ({ name }) => removed.push(name),
+				},
+			},
+		};
+		const execute = new AsyncFunction(
+			'github',
+			'context',
+			'core',
+			stepScript(labelWorkflow, 'Apply the type label named by the pull request title'),
+		);
+
+		return execute(
+			github,
+			{ repo: { owner: 'octanejs', repo: 'octane' }, payload: { pull_request: { number: 500 } } },
+			{
+				notice: (message) => notices.push(message),
+				setFailed: (message) => failures.push(message),
+			},
+		).then(() => ({ added, removed, notices, failures }));
+	}
+
+	test('reads the type off a conventional-commit title', async () => {
+		for (const [title, type] of [
+			['feat(lynx): add a thing', 'feat'],
+			['fix: repair a thing', 'fix'],
+			['perf!: drop a slow path', 'perf'],
+			['ci(workflows): only run when needed', 'ci'],
+		]) {
+			const { added, removed, failures } = await runLabeller({ title });
+
+			assert.deepEqual(added, [type], title);
+			assert.deepEqual(removed, []);
+			assert.deepEqual(failures, []);
+		}
+	});
+
+	test('moves the label when a pull request is retitled', async () => {
+		const { added, removed } = await runLabeller({
+			title: 'fix(compiler): render the non-JSX arm',
+			labels: ['feat', 'agent-authored', 'blocked'],
+		});
+
+		assert.deepEqual(added, ['fix']);
+		// Only the superseded type goes. Everything else on the pull request is
+		// somebody's deliberate act.
+		assert.deepEqual(removed, ['feat']);
+	});
+
+	test('writes nothing when the label already matches the title', async () => {
+		const { added, removed, notices } = await runLabeller({
+			title: 'docs: split the README',
+			labels: ['docs', 'agent-authored'],
+		});
+
+		assert.deepEqual(added, []);
+		assert.deepEqual(removed, []);
+		assert.deepEqual(notices, []);
+	});
+
+	test('leaves labels alone when the title names no type', async () => {
+		const { added, removed, notices } = await runLabeller({
+			title: 'Format',
+			labels: ['agent-authored'],
+		});
+
+		assert.deepEqual(added, []);
+		assert.deepEqual(removed, []);
+		assert.match(notices.join('\n'), /no conventional-commit type/);
+	});
+
+	test('ignores an unknown type rather than inventing a label', async () => {
+		const { added, notices } = await runLabeller({ title: 'wip(runtime): halfway there' });
+
+		assert.deepEqual(added, []);
+		assert.match(notices.join('\n'), /no conventional-commit type/);
+	});
+
+	test('does nothing once the pull request has closed', async () => {
+		const { added, removed } = await runLabeller({ title: 'feat: a thing', state: 'closed' });
+
+		assert.deepEqual(added, []);
+		assert.deepEqual(removed, []);
+	});
+
+	test('runs with a writable token without checking out pull request code', () => {
+		assert.match(
+			labelWorkflow,
+			/on:\n {2}pull_request_target:\n {4}types: \[opened, reopened, edited\]/,
+		);
+		assert.match(labelWorkflow, /^ {6}pull-requests: write$/m);
+		assert.doesNotMatch(labelWorkflow, /actions\/checkout/);
+		assert.doesNotMatch(labelWorkflow, /contents: write/);
+		// A body-only edit cannot change the type, so it must not spend a runner.
+		assert.match(labelWorkflow, /github\.event\.changes\.title != null/);
 	});
 });

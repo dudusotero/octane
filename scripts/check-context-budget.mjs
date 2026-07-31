@@ -18,7 +18,10 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Claude Code's own guidance is to keep a CLAUDE.md under 200 lines. The byte
 // ceiling catches the same regrowth arriving as long lines.
 const ROOT_RULE_MAX_LINES = 200;
-const ROOT_RULE_MAX_BYTES = 8_000;
+// Raised from 8,000 to buy the skill-file path and the `agent-authored` rule.
+// Both are routing an agent cannot derive by reading the repo, which is the
+// content this budget exists to make room for.
+const ROOT_RULE_MAX_BYTES = 9_000;
 // A description states when to reach for a skill. Past a couple of sentences it
 // is documentation, and it belongs in the skill body instead.
 const SKILL_DESCRIPTION_MAX_CHARS = 400;

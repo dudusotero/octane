@@ -1,0 +1,89 @@
+name: Label PR type
+
+# The type label is fully derivable from the conventional-commit title, and a
+# fork contributor's token has no rights to label the base repository at all, so
+# deriving it here is the only path that reaches every pull request. `edited`
+# carries a retitled pull request onto its new type.
+on:
+  pull_request_target:
+    types: [opened, reopened, edited]
+
+concurrency:
+  # Serialize per pull request instead of cancelling: two runs racing on the
+  # same title would fight over which type label survives.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  type:
+    name: apply type label
+    if: >-
+      github.event.pull_request.state == 'open' &&
+      (github.event.action != 'edited' || github.event.changes.title != null)
+    runs-on: ubuntu-latest
+    # `pull_request_target` is what gives a fork pull request a writable token.
+    # Nothing here checks out or executes the pull request's code.
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Apply the type label named by the pull request title
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const TYPES = ["feat", "fix", "docs", "test", "perf", "refactor", "chore", "ci"];
+            const { owner, repo } = context.repo;
+            const number = context.payload.pull_request.number;
+
+            // The event payload is a snapshot from before this run was queued.
+            const { data: pull } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: number,
+            });
+            if (pull.state !== "open") {
+              return;
+            }
+
+            const match = /^\s*([a-z]+)\s*(?:\([^)]*\))?\s*!?:/.exec(pull.title);
+            const type = match && TYPES.includes(match[1]) ? match[1] : null;
+            if (!type) {
+              core.notice(
+                `#${number} has no conventional-commit type in its title, so no type label was applied. ` +
+                  `Retitle it as one of ${TYPES.join(", ")} and this runs again.`,
+              );
+              return;
+            }
+
+            // Exactly one type label is the rule, so a retitled pull request has
+            // to take its previous type with it.
+            const current = pull.labels.map((label) => label.name);
+            const stale = current.filter((name) => name !== type && TYPES.includes(name));
+            try {
+              for (const name of stale) {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: number,
+                  name,
+                });
+              }
+              if (!current.includes(type)) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: number,
+                  labels: [type],
+                });
+              }
+            } catch (error) {
+              core.setFailed(
+                `Could not set the type label on #${number}: ${error.message}. Apply \`${type}\` manually.`,
+              );
+              return;
+            }
+
+            if (stale.length === 0 && current.includes(type)) {
+              return;
+            }
+            core.notice(`Labelled #${number} as \`${type}\`.`);

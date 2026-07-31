@@ -76,15 +76,19 @@ git add <files>
 git commit -m "<type>: <summary>"
 git push -u origin <branch>
 gh pr create --draft --fill
-gh pr edit <number> --add-label <type> --add-label agent-authored
+gh pr edit <number> --add-label agent-authored
 ```
 
 If using `gh pr create --body-file`, write the PR body to a temp file and pass it explicitly.
 
+The type label is not yours to apply: `.github/workflows/label-pr-type.yml`
+derives it from the conventional-commit type in the title. Write the title
+correctly and skip `--add-label <type>`.
+
 Label after the PR exists rather than with `gh pr create --label`, so a rejected
 label cannot cost you the PR. An outside contributor's token has no rights to
-label at all; when the edit fails, leave the PR open and name the intended labels
-in the final response.
+label at all; when the edit fails, leave the PR open, tick the `agent-authored`
+box in the pull request template, and name the owed label in the final response.
 
 ## Leave the PR as a draft
 
@@ -108,9 +112,11 @@ it ready for review, so it never undoes `gh pr ready`.
 Every PR carries exactly one type label. Every PR whose diff an agent produced
 also carries `agent-authored`.
 
-- Type: the conventional-commit type already in the PR title, one of `feat`,
-  `fix`, `docs`, `test`, `perf`, `refactor`, `chore`, `ci`. A `feat(lynx): …`
-  title takes `feat`. Never apply two.
+- Type: one of `feat`, `fix`, `docs`, `test`, `perf`, `refactor`, `chore`, `ci`,
+  applied by `.github/workflows/label-pr-type.yml` from the PR title. A
+  `feat(lynx): …` title takes `feat`, and retitling moves the label. Never apply
+  one by hand, and never apply two. A title the regex cannot read leaves the PR
+  unlabelled, which is the signal to fix the title.
 - `agent-authored`: apply whenever an agent wrote the change, no matter which
   account pushes it. The author field cannot show this, because an agent commits
   under the human's credentials, so the label is the only signal that separates

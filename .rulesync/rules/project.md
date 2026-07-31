@@ -52,6 +52,16 @@ yourself rather than the thing you were asked for:
 - `authoring-tsrx`: writing a new `.tsrx` file.
 - `triage`: the owning area is unclear.
 
+Each skill is `.rulesync/skills/<name>/SKILL.md`, with a generated per-tool copy.
+Read that path directly when your tool cannot load a skill by name.
+
+One rule from `create-a-pr` has to survive not loading it: label a PR
+`agent-authored` whenever an agent produced the diff, whoever pushes it. An agent
+commits under a human's credentials, so the label is the only thing separating
+the two, and its absence asserts a human wrote the diff. From a fork your token
+cannot label at all, so tick the box in the PR template instead. Type labels are
+derived from the PR title, so a conventional-commit title is the whole job.
+
 ## Your React instincts are the main failure mode here
 
 Octane is React-shaped and deliberately different in specific places. Reading the
