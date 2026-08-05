@@ -20915,7 +20915,14 @@ function makeCompCall(
 		if (calleeInfo) {
 			voidComponent = !ctx.hmr && calleeInfo.voidOutput === true;
 			if (keyExpr == null) {
-				if (calleeInfo.eligible) liteEligible = callSiteOk;
+				// HMR keeps the generic path here too. A lite callee is scoped to its
+				// caller's LiteBlockImpl instead of owning a Block, so an exported lite
+				// component has no range for `hmr().update()` to rebuild — it declines
+				// and the bundler full-reloads on every edit of a hookless same-module
+				// component. The gate belongs on the CONDITION: assigning
+				// `!ctx.hmr && callSiteOk` would skip the `else if` and drop the call
+				// site onto the marked path, minting a comment pair per call site.
+				if (calleeInfo.eligible && !ctx.hmr) liteEligible = callSiteOk;
 				else if (calleeInfo.singleRoot) singleRoot = callSiteOk;
 				if (
 					ctx.autoMemo &&

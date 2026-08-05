@@ -305,9 +305,12 @@ export function Parent(p) @{
 
 	it('uses the generic component path during HMR', () => {
 		const code = compile(source, 'value-return.tsrx', { hmr: true }).code;
+		// Every call site takes the generic path: an update may replace a void body
+		// with a value-returning one, and a hot refresh needs a Block per component
+		// to rebuild — a lite callee shares its caller's scope and owns none.
 		expect(code).not.toContain('componentSlotVoid');
-		expect(code.match(/_\$componentSlot\(/g)).toHaveLength(5);
-		expect(code.match(/_\$componentSlotLite\(/g)).toHaveLength(1);
+		expect(code).not.toContain('componentSlotLite');
+		expect(code.match(/_\$componentSlot\(/g)).toHaveLength(6);
 	});
 });
 

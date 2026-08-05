@@ -416,6 +416,71 @@ describe('hmr — runtime wrapper', () => {
 		r.unmount();
 	});
 
+	it('leaves a hidden Activity hidden when its content is edited', async () => {
+		// The hidden range is stamped `display: none` by a walk that only runs when
+		// the Activity slot re-renders, so a remount would insert unstamped nodes
+		// and the edit would show up inside a tree the user cannot see.
+		const child = (label: string) => `export function Child() @{ <b class="k">${label}</b> }`;
+		const initialChild = await compileHmrComponent(child('before'), 'Child', '/src/Child.tsrx');
+		const App = await compileHmrComponent(
+			`
+				import { Child } from './Child.tsrx';
+				import { Activity } from 'octane';
+				export function App() @{
+					<div class="app"><Activity mode="hidden"><Child /></Activity></div>
+				}
+			`,
+			'App',
+			'/src/App.tsrx',
+			{ './Child.tsrx': { Child: initialChild } },
+		);
+		const r = mount(App);
+		expect((r.find('.k') as HTMLElement).style.display).toBe('none');
+
+		const updatedChild = await compileHmrComponent(child('after'), 'Child', '/src/Child.tsrx');
+		let accepted = true;
+		flushSync(() => {
+			accepted = (initialChild as any)[HMR].update(updatedChild);
+		});
+		// Whatever the refresh decided, nothing in the hidden tree may surface.
+		expect((r.find('.k') as HTMLElement).style.display).toBe('none');
+		// Reporting failure is what makes the bundler reload instead of leaving the
+		// page on a build the DOM no longer matches.
+		expect(accepted).toBe(false);
+		r.unmount();
+	});
+
+	it('refreshes a hookless component declared beside its caller', async () => {
+		// A hookless same-module callee is the shape that qualifies for the lite
+		// call path, which owns no Block. Dev output keeps it on the generic path so
+		// the refresh has a range to rebuild instead of forcing a page reload.
+		const source = (row: string, tail: string) =>
+			`
+				export function Row() @{ <li class="row">${row}</li> }
+				export function App() @{ <ul class="app"><Row /><li class="tail">${tail}</li></ul> }
+			`;
+		const initial: any = await compileHmrComponent(
+			source('before', 'tail'),
+			'{ Row, App }',
+			'/src/App.tsrx',
+		);
+		const r = mount(initial.App);
+		expect(r.find('.row').textContent).toBe('before');
+
+		const updated: any = await compileHmrComponent(
+			source('after', 'tail'),
+			'{ Row, App }',
+			'/src/App.tsrx',
+		);
+		flushSync(() => {
+			expect((initial.Row as any)[HMR].update(updated.Row)).toBe(true);
+		});
+		expect(r.find('.row').textContent).toBe('after');
+		expect(r.findAll('.row')).toHaveLength(1);
+		expect(r.find('.tail').textContent).toBe('tail');
+		r.unmount();
+	});
+
 	it('publishes edited memo and effect closures during refresh', async () => {
 		const initial = await compileHmrComponent(`
 			import { useLayoutEffect, useMemo } from 'octane';
